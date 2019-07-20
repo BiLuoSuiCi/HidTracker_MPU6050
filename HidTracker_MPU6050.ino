@@ -1,5 +1,5 @@
 /*
- *  HiDTracker_MPU6050 v0.1
+ *  HiDTracker_MPU6050 v0.2
  *  
  *  (c) 2019  HickDead, Vis3r
  *  
@@ -66,13 +66,15 @@ const uint8_t reportDescriptor[] =
 };
 
 
-USBHID         HID;
-HIDReport_t    report, old_report;
-HIDReporter    reporter( HID, (uint8_t*)&report, sizeof(report), REPORT_ID);
-volatile bool  sensorInterrupt = false;     // has sensor interrupt pin triggered?
+USBHID                 HID;
+HIDReport_t            report, old_report;
+HIDReporter            reporter( HID, (uint8_t*)&report, sizeof(report), REPORT_ID);
+USBCompositeSerial     SerialC;
+extern volatile int8   usbGenericTransmitting;
 
-MPU6050        sensor( 0x68 + MPU_AD0);     // our sensor du jour
-uint8_t        packetSize = 0;              // expected sensor packet size
+MPU6050                sensor( 0x68 + MPU_AD0);     // our sensor du jour
+uint8_t                packetSize = 0;              // expected sensor packet size
+volatile bool          sensorInterrupt = false;     // has sensor interrupt pin triggered?
 
 
 /*
@@ -82,6 +84,23 @@ void sensorReady()
 {
     sensorInterrupt = true;
 }
+
+
+
+/* 
+ *  Initialize USB composite
+ */
+void setup_usb()
+{
+
+  USBComposite.setManufacturerString( "Vis3r");
+  USBComposite.setProductString( "Vis3r STM32 HMD MPU6050");
+  USBComposite.setSerialString( "HMD 0.1");
+//HID.begin( reportDescriptor, sizeof(reportDescriptor));
+  HID.begin( SerialC, reportDescriptor, sizeof(reportDescriptor));
+
+}
+
 
 
 /* 
@@ -147,10 +166,8 @@ void setup()
   digitalWrite( VCC_PIN, HIGH);    // turn on sensor
 # endif // VCC_PIN
 
-  USBComposite.setManufacturerString( "Vis3r");
-  USBComposite.setProductString( "Vis3r STM32 HMD MPU6050");
-  USBComposite.setSerialString( "HMD 0.1");
-  HID.begin( reportDescriptor, sizeof(reportDescriptor));
+  setup_usb();
+  setup_wire();
 
   // First blink; USB ready
   digitalWrite( LED_PIN, LED_ON);
@@ -182,7 +199,7 @@ void setup()
   // configure interrupt pin as input, prolly default but meh
   pinMode( INT_PIN, INPUT);
   // activate pull-up on interrupt pin
-  digitalWrite( INT_PIN, HIGH);
+//  digitalWrite( INT_PIN, HIGH);
   // enable Arduino interrupt detection
   attachInterrupt( digitalPinToInterrupt(INT_PIN), sensorReady, RISING);
 # endif // INT_PIN
@@ -209,10 +226,10 @@ void output_vis3r(Quaternion q)
     report.Q.y=q.y;
     report.Q.z=q.z;
 
-    if( memcmp(&old_report,&report,sizeof(HIDReport_t)) )
+    if( usbGenericTransmitting < 0 && memcmp(&old_report,&report,sizeof(HIDReport_t)) )
     {
       memcpy( &old_report, &report, sizeof(HIDReport_t));
-      reporter.sendReport();
+        reporter.sendReport();
     }
 
 }
